@@ -1,0 +1,13 @@
+<?php
+
+/**
+ * @file
+ * Install file for User Created By module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function cesfur_general_schema() {
+
+}

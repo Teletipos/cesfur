@@ -1,0 +1,42 @@
+TODO BACKEND - APP ADMIN & EMPLEADAS
+
+1. Hace falta implementar login y rol de empleada. Estimar tiempo para loguearse con OAuth enviando un token a la aplicación.
+
+2. Hace falta implementar campos. Estimarlo
+
+3. Configuración Agenda Empleada. La funcionalidad para habilitar horas específicas x dias específicos no está implementada. Solo se encuentra implementado UN SOLO horario default en determinados días. El bloqueo de días tampoco está implementado. Estimarlo.
+
+4.  - Clientes con assinatura no existen en el sistema. Deberiamos tener una forma de automatizar eso. Estimarlo
+    - Posibilidad de cancelar servicios en la agenda no está implementado. Estimarlo
+    - Los servicios cancelados no se guardan en la base. ¿Hacemos un histórico de servicios cancelados? Preguntar y estimarlo
+5.  - No estamos detectando si un servicio/evento existente cambia de fecha. (Preguntar si va a ser útil y estimarlo)
+    - Si la empleada acepto el servicio y despues se arrepiente, el sistema permite cancelar el servicio hasta 24hs antes del inicio. No está implementado ésto. Estimarlo.
+    - Si la empleada cancela el servicio, el sistema vuelve a ofrecer el mismo servicio para otras empleadas. No está implementado ésto. (EN DESARROLLO)
+    - Feedback de los clientes (estrellas). No hay nada que permita valorar a una empleada. Actualmente ésto funciona por email con una herramienta externa. Necesitamos centralizarlo en el sistema. Estimarlo.
+    - Si el feedback fue negativo, se informa que el pago fue bloqueado y que easyQasa entrara en contacto para verificar la situacion. Ésto va a depender de la herramienta ajena (mencionado arriba). (Preguntar y estimarlo)
+
+6. - Posibilidad de enviar mensajes para las mujeres con novedades. Hace falta hacer un ABM en la página web (para seleccionar empleadas y el mensaje a enviar). Estimarlo.
+
+8. - ¿Que es descripción de contactos? No está claro éste item.
+
+9. - ¿Ésto se refiere a obtener el documento con la api de clicksign y mostrarlo en el celular, cierto?
+
+TODO BACKEND - APP CLIENTE
+
+0. Hablar con el cliente. Tiene que existir la posibilidad tambien de registrar usuarios.
+
+1. Estimar tiempo para loguearse con OAuth enviando un token a la aplicación.
+
+2.  - Agregar campos (estimar)
+
+3.  - No existe función para cancelar un servicio. Preguntar
+
+4.  - Mapa del servicio con trayecto desde el ZIP Code de la empleada hasta el cliente. (¿Esto es seguro?¿Porque el cliente debería saber donde vive la empleada?) (Preguntar y luego estimar)
+    - Background de la domestica con feedbak de otros clientes. No está implemnetado en el sistema. (Preguntar y luego estimar)
+    - Si el feedback fue negativo, se informa que: 1) esa empleada pasa a formar el black list de ese cliente, 2) easyQAsa entrara en contacto (leer el item de arriba)
+
+5.  - Implementar entidad de feedback, métodos para dar feedback (desde un usuario a otro). (Preguntar y luego estimar)
+
+7.  - Hace falta hacer un ABM en la página web (para seleccionar empleadas y el mensaje a enviar). Estimarlo.
+
+9.  - ¿Que es descripción de contactos? No está claro éste item.

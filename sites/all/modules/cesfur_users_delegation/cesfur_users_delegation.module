@@ -1,0 +1,278 @@
+<?php
+
+define('CUD_MODULE_NAME', 'CREATE_USERS_DELEGATION');
+
+/**
+ * Implements hook_menu().
+ * @return array
+ */
+function cesfur_users_delegation_menu() {
+  $items = array();
+
+  $items['admin/people/permissions/delegation'] = array(
+    'title' => 'Delegation roles',
+    'description' => "Define the set of roles who can create users of specific role.",
+    'type' => MENU_LOCAL_TASK | MENU_VISIBLE_IN_TREE,
+    'file' => 'cesfur_users_delegation.admin.inc',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cesfur_users_delegation_admin_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer permissions'),
+  );
+
+  return $items;
+}
+
+function getDelegationRolesForCurrent() {
+    global $user;
+    $roles = $user->roles;
+    unset($roles[DRUPAL_AUTHENTICATED_RID]);
+    $rids = array_keys($roles);
+
+    $delegationRoles = variable_get('rol_subset_delegation_' . $rids[0], array());
+    $delegationRoles = array_keys(array_filter($delegationRoles, "isCheckboxDelegationRole"));
+
+    return $delegationRoles;
+}
+
+function getNotAllowedRolesForCurrent() {
+    $roles = user_roles(TRUE);
+    $roleEntities = array();
+    foreach(getDelegationRolesForCurrent() as $key => $rid) {
+        $rAux = user_role_load($rid);
+        $roleEntities[$rid] = $rAux->name;
+    }
+    return array_diff($roles, $roleEntities);
+}
+
+function cesfur_users_delegation_form_alter(&$form, &$form_state, $form_id) {
+
+    //If it's the administrator then leave it do whatever he want.
+    if(user_access('administer')){
+        return $form;
+    }
+
+    //Evaluate the form ID then restrict some users (for editing) to other users by its role.
+    switch($form_id) {
+        case 'user_profile_form' : {
+            //Check if the current user can modify the given user.
+            global $user;
+
+            $creator = getCreatorUserId($form["#user"]->uid);
+            if($creator == NULL ||
+                $creator != $user->uid &&
+                $user->uid != $form["#user"]->uid){
+                drupal_goto();
+                break;
+            }
+
+            //Disable username and mail edition.
+            $form['account']['name']['#disabled'] = TRUE;
+            $form['account']['mail']['#disabled'] = TRUE;
+        }
+        case 'user_register_form' :{
+            $autoSelectThose = true;
+            $delegationRoles = getDelegationRolesForCurrent();
+
+            $rolesField = NULL; //The checkbox input
+
+            // Get roles already assigned to the account.
+            $account = menu_get_object('user');
+
+            $delegationRolesCheckbox = array(); //Values to put in the select input
+            foreach($delegationRoles as $key => $role) {
+                $delegationRolesCheckbox[$role] = user_role_load($role)->name;
+            }
+
+            if($account != NULL) { //Editing user
+                $userRoles = $account->roles;
+                unset($userRoles[DRUPAL_AUTHENTICATED_RID]);
+
+                // Build the assign roles checkboxes.
+                $roles_field = array(
+                    '#type' => 'checkboxes',
+                    '#title' => t('Assignable roles'),
+                    '#options' => $userRoles,
+                    '#default_value' => array_keys($userRoles),
+                    '#disabled' => TRUE
+                );
+
+            } else { //Creating user
+                // Build the assign roles checkboxes.
+                $roles_field = array(
+                    '#type' => 'checkboxes',
+                    '#title' => t('Assignable roles'),
+                    '#options' => $delegationRolesCheckbox,
+                    '#default_value' => array_keys($delegationRolesCheckbox),
+                    '#disabled' => TRUE
+                );
+            }
+
+            // The user form is sometimes within an 'account' fieldset.
+            if (isset($form['account'])) {
+                $user_form =& $form['account'];
+            } else {
+                $user_form =& $form;
+            }
+
+            $user_form['cesfur_users_roles'] = $roles_field;
+
+            break;
+        }
+        case 'user_filter_form' : {
+            $notAllowed = getNotAllowedRolesForCurrent();
+            if(count($notAllowed) > 0) {
+                $filtersOptions = $form["filters"]["status"]["filters"]["role"]["#options"];
+                foreach($filtersOptions as $key => $roleName) {
+                    if(in_array($roleName, array_values($notAllowed))) {
+                        unset($filtersOptions[$key]);
+                    }
+                }
+                $form["filters"]["status"]["filters"]["role"]["#options"] = $filtersOptions;
+            }
+
+            //Delete filters for permissions
+            unset($form["filters"]["status"]["filters"]["permission"]);
+
+            break;
+        }
+        case 'user_admin_account': {
+            $delegatedRoles = getDelegationRolesForCurrent();
+            $delegatedRids = array_values($delegatedRoles);
+            $users = $form['accounts']['#options'];
+
+            global $user;
+
+            foreach($users as $key => $curUser) {
+
+                //This mantains the compatibility with the module 'User created by'
+                $creator = getCreatorUserId($key);
+                if($creator <= 0 ||
+                    $creator != $user->uid) {
+                    unset($form['accounts']['#options'][$key]);
+                    continue;
+                }
+
+                $usr = user_load($key);
+                $roleUsers = $usr->roles;
+                unset($roleUsers[DRUPAL_AUTHENTICATED_RID]);
+
+                $found = false;
+                foreach($roleUsers as $subKey => $roleUser) {
+                    if(in_array($subKey, $delegatedRids)) {
+                        $found = true;
+                    }
+                }
+
+                if(!$found)
+                    unset($form['accounts']['#options'][$key]);
+            }
+            break;
+        }
+        default: {
+            //Do nothing here.
+            break;
+        }
+    }
+
+    return $form;
+}
+
+/**
+ * Really implements hook_user_presave().
+ *
+ * @param array $edit
+ * @param object $account
+ * @param string $category
+ */
+function cesfur_users_delegation_user_presave(array &$edit, $account, $category) {
+    // If this isn't the account category, or there is no roleassign_roles
+    // field, there isn't much to do.
+    if ($category != 'account' || !isset($edit['cesfur_users_roles'])) {
+        return;
+    }
+
+    $delegationRoles = getDelegationRolesForCurrent();
+    $delegationRolesCheckbox = array(); //Values to put in the select input
+    foreach($delegationRoles as $key => $role) {
+        $delegationRolesCheckbox[$role] = user_role_load($role)->name;
+    }
+
+    // On submit, copy sticky and assigned roles from 'roleassign_roles'
+    // to 'roles'.
+    $edit['roles'] = $delegationRolesCheckbox;
+    unset($edit['cesfur_users_roles']);
+}
+
+function getCreatorUserId($uid) {
+    if(module_exists('user_created_by')) {
+        $creator = db_select('user_created_by_data', 'uc')
+            ->fields('uc', array('creator_uid'))
+            ->condition('uc.uid', $uid, '=')
+            ->execute()
+            ->fetchAssoc();
+        if($creator != NULL &&
+            isset($creator["creator_uid"])) {
+            return $creator["creator_uid"];
+        }
+
+        return -1;
+    }
+}
+
+/*
+* Get the user at top level who creates the user who creates the user who creates the user... 
+*/
+function getMasterCreatorUserId($uid) {
+    if(module_exists('user_created_by')) {
+        $topCreator = NULL;
+
+        do {
+            $topCreator = $creator;
+
+            $compareVal = ($topCreator != null) ? $topCreator["creator_uid"] : $uid;
+
+            $creator = db_select('user_created_by_data', 'uc')
+                ->fields('uc', array('creator_uid'))
+                ->condition('uc.uid', $compareVal, '=')
+                ->execute()
+                ->fetchAssoc();
+
+        } while($creator != null &&
+            isset($creator["creator_uid"]));
+        
+        return isset($topCreator["creator_uid"]) ?
+            $topCreator["creator_uid"] : 
+            -1;
+    }
+}
+
+/*
+* Get creators of this user in cascade mode.
+* Eg: The user UID was created by user = 5, and this last one was created by user = 7, and this last one was created by user = 1 then the result array will be something like this:
+* array(5, 7, 1)
+*/
+function getArrayCreatorsUserId($uid) {
+    if(module_exists('user_created_by')) {
+        $creator = NULL;
+        $lastId = $uid;
+        $arrUsers = array();
+        do {
+            $creator = db_select('user_created_by_data', 'uc')
+                ->fields('uc', array('creator_uid'))
+                ->condition('uc.uid', $lastId, '=')
+                ->execute()
+                ->fetchAssoc();
+            if(isset($creator["creator_uid"])){
+                $lastId = $creator["creator_uid"];
+                $arrUsers[] = $lastId;
+            }
+        } while($creator != null && isset($creator["creator_uid"]));
+
+        return $arrUsers;
+    }
+}
+
+function isCheckboxDelegationRole($role) {
+    return $role > 0;
+}

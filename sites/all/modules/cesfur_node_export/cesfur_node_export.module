@@ -1,0 +1,53 @@
+<?php
+
+function cesfur_node_export_menu(){
+    $items = array();
+    $items['export/anticlientes'] = array(
+        'title' => 'Exportar a CSV',
+        'page callback' => 'export_node',
+        'page arguments' => array('anti_clientes', 'csv'),
+        'access callback' => TRUE,
+        'type' => MENU_LOCAL_TASK,
+    );
+    return $items;
+}
+
+function export_node($node_type, $format) {
+    switch($node_type) {
+        case 'anti_clientes': {
+            switch($format) {
+                case 'csv' : {
+                    export_node_to_csv($node_type);
+                    break;
+                }
+            }
+
+            break;
+        }
+        default: {
+            return;
+        }
+    }
+}
+
+function export_node_to_csv($node_type) {
+    switch($node_type) {
+        case 'anti_clientes' : {
+            export_anticliente_to_csv();
+            break;
+        }
+    }
+}
+
+function export_anticliente_to_csv() {
+    $result = db_query("SELECT nid FROM node WHERE type = 'anti_cliente'");
+    $nids = array();
+    foreach ($result as $row) {
+        $nids[] = $row->nid;
+    }
+
+    $nodes = node_load_multiple($nids);
+    foreach($nodes as $node) {
+        die(var_dump($node));
+    }
+}

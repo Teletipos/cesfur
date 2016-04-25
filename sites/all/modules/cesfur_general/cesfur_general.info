@@ -1,0 +1,6 @@
+core = "7.x"
+description = "This contains generic functions for the website."
+name = "CESFUR General Module"
+package = Darwoft
+
+scripts[] = js/cesfur_general_jquery.js

@@ -1,0 +1,197 @@
+<?php
+
+define('MODULE_NAME', 'AUTH_TWILIO_LOGIN');
+define('STRING_PERMISSION', 'twilio_validation');
+
+/**
+ * Custom submit handler
+ */
+function auth_twilio_login_user_login(&$edit, $account) {
+    if(!user_access('administer', $account) && 
+        user_access(STRING_PERMISSION, $account)) {
+        
+        $sentMessage = sendMessageToTwilio($account->uid);
+        $destination = '';
+
+        $phoneNumber = getPhoneNumberFromUser($account->uid);
+        if($sentMessage) {
+            watchdog(MODULE_NAME, 'Mensaje enviado a +' . $phoneNumber[0] . $phoneNumber[1], array(), WATCHDOG_DEBUG);
+            $destination = 'user/login/verification';
+        } else {
+            watchdog(MODULE_NAME, 'El mensaje a +' . $phoneNumber[0] . $phoneNumber[1] . ' no se pudo enviar', array(), WATCHDOG_ERROR);
+            form_set_error('error_sending_message', 'El mensaje no pudo enviarse a su teléfono celular. Inténtelo nuevamente');
+            $destination = '/';
+        }
+        
+        //Require user module
+        require_once(drupal_get_path('module', 'user') . '/user.pages.inc');
+        custom_user_logout();
+
+        $_GET['destination'] = $destination;
+    }
+
+}
+
+function auth_twilio_login_menu() {
+    $items = array();
+    $items['user/login/verification'] = array(
+        'title' => t('Codigo de verificacion'),
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('auth_twilio_form'),
+        'access arguments' => array('access content'),
+        'description' => t('Verification code'),
+        'type' => MENU_CALLBACK,
+    );
+
+    return $items;
+}
+
+function auth_twilio_form($form_state) {
+    $sessionId = (isset($_SESSION['auth_twilio_user'])) ? $_SESSION['auth_twilio_user'] : NULL;
+    
+    if($sessionId == NULL || 
+        $sessionId == -1 ||
+        user_is_logged_in()) {
+        drupal_goto();
+        return NULL;
+    }
+
+    $user = user_load($sessionId);
+    $form['verification_code'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Ingrese el codigo de verificacion para ingresar con ' . $user->name),
+    );
+  
+    // Adds a simple submit button that refreshes the form and clears its contents -- this is the default behavior for forms.
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => 'Enviar',
+    );
+
+    $form['resend'] = array(
+        '#type' => 'submit',
+        '#value' => 'Reenviar código',
+        '#validate' => array(),
+        '#submit' => array('auth_twilio_form_resend_code')
+    );
+
+    return $form;
+}
+
+/**
+ * Validates the form.
+ */
+function auth_twilio_form_validate($form, &$form_state) {
+    $uid = $_SESSION['auth_twilio_user'];
+    $user = user_load($uid);
+    $data = $user->data['field_auth_twilio_login'];
+
+    if($data == null) {
+        form_set_error('code_expired', 'El codigo de verificacion expiró. Por favor logueese nuevamente para generar uno nuevo.');
+    } else {
+        $code = $data['validation_number'];
+        if($uid == NULL || $uid == 0 || $code == -1) {
+            form_set_error('code_expired', 'El codigo de verificacion expiró. Por favor logueese nuevamente para generar uno nuevo.');
+        } else {
+            if(isset($form_state['values']['verification_code'])) {
+                $number = $form_state['values']['verification_code'];
+                if(strlen($number) != 6) {
+                    form_set_error('code_invalid', 'El codigo de verificacion es incorrecto.');
+                } else if($code != $number) {
+                    form_set_error('code_invalid', 'El codigo de verificacion es incorrecto.');
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Add a submit handler/function to the form.
+ *
+ * This will add a completion message to the screen when the
+ * form successfully processes
+ */
+function auth_twilio_form_submit($form, &$form_state) {
+    //Success, the verification code is right !
+    $uid = $_SESSION['auth_twilio_user'];
+    global $user;
+    $user = user_load($uid);
+
+    drupal_goto();
+}
+
+function auth_twilio_form_resend_code($form, &$form_state) {
+    $sentMessage = sendMessageToTwilio($_SESSION['auth_twilio_user']);
+    $user = user_load($_SESSION['auth_twilio_user']);
+    if($sentMessage) {
+        drupal_set_message('El codigo de seguridad se ha reenviado.');
+        watchdog(MODULE_NAME, 'El codigo se ha reenviado al usuario ' . $user->name, WATCHDOG_INFO);
+    } else {
+        watchdog(MODULE_NAME, 'El codigo no se pudo reenviar al usuario ' . $user->name, WATCHDOG_INFO);
+    }
+}
+
+/** Rewriting the logout method for user **/
+function custom_user_logout() {
+    global $user;
+    $userAux = $user->uid;
+
+    module_invoke_all('user_logout', $user);
+
+    // Destroy the current session, and reset $user to the anonymous user.
+    session_destroy();
+
+    $_SESSION['auth_twilio_user'] = $userAux;
+}
+
+function auth_twilio_login_permission() {
+  return array(
+        STRING_PERMISSION => array(
+            'title' => t('Enable Twilio Authentication for this role / group.'), 
+            'description' => '',
+        ),
+    );
+}
+
+function sendMessageToTwilio($uid) {
+    //Save random number and send it by sms.
+    $randomNumber = mt_rand(100000, 999999);
+    $account = user_load($uid);
+    $account->data = array(
+        'field_auth_twilio_login' => array(
+            'uid' => $account->uid,
+            'validation_number' => $randomNumber,
+            'generated' => date('d-m-Y H:m:s')
+        )
+    );
+    user_save($account);
+
+    /** First index: country code, second index for the phone number **/
+    $phoneNumber = getPhoneNumberFromUser($account->uid);
+
+    $message = "Su codigo de confirmacion es: $randomNumber. Atte";
+
+    $sentMessage = twilio_send($phoneNumber[1], $message, ("+" . $phoneNumber[0]));
+    return $sentMessage;
+}
+
+/**
+* Retorna un array con el country code y el phone number.
+* El primer indice pertenece al country code.
+* El segundo indice al phone number
+*/
+function getPhoneNumberFromUser($uid) {
+    $account = user_load($uid);
+    //Get phone number
+    $phoneNumber = $account->field_n_mero_de_m_vil['und'][0]['value'];
+
+    //Get country code
+    $countryCodeTerm = $account->field_user_country_code['und'][0]['tid'];
+    $countryCode = taxonomy_term_load($countryCodeTerm);
+    $countryCode = $countryCode->field_codigo_de_pais['und'][0]['value'];
+
+    $r = array(
+        $countryCode, $phoneNumber
+    );
+    return $r;
+}

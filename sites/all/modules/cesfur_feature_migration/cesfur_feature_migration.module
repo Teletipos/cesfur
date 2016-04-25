@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Cesfur feature migration feature.
+ */
+
+include_once 'cesfur_feature_migration.features.inc';

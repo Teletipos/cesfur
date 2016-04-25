@@ -19,6 +19,7 @@
 ?>
 
 <?php
+die("t");
 foreach ($form["submitted"] as $key => $value) {
 	if( (is_array($value) && array_key_exists('#type', $value) && $value['#type']) == "webform_email") {
 		if (!empty($value['#title'])) {

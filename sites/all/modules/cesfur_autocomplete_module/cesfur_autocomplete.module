@@ -1,0 +1,60 @@
+<?php
+
+define('CESFUR_AUTOCOMPLETE_MODULE_NAME', 'CESFUR AUTOCOMPLETE');
+
+function cesfur_autocomplete_menu(){
+    $items = array();
+    // path with autocomplete function for cities
+    $items['cesfur/users/empresas_financieras/autocomplete'] = array(
+      'title' => 'Autocomplete for employes',
+      'page callback' => '_users_empresas_financieras_autocomplete',
+      'access arguments' => array('access content'), 
+      'type' => MENU_CALLBACK
+    );
+
+    return $items;
+}
+
+function cesfur_autocomplete_form_alter(&$form, $form_state, $form_id) {
+    switch($form_id) {
+        case 'empresa_financiera_node_form' : {
+
+            //Change the autocomplete path
+            $form["field_usuario_empresa_financiera"]["und"][0]["target_id"]["#autocomplete_path"] = "cesfur/users/empresas_financieras/autocomplete";
+
+            break;
+        }
+    }
+
+    return $form;
+}
+
+function _users_empresas_financieras_autocomplete($string){
+    if($string != NULL &&
+        strlen($string) > 0) {
+        global $user;
+        $currentUserId = $user->uid;
+
+        $matches = array();
+        $result = db_select('users', 'u');
+        $result->join('user_created_by_data', 'uc', 'uc.uid = u.uid');
+
+        //Get only the users who don't have associated compan.
+        $result->leftJoin('field_data_field_id_empresa_financiera', 'ef', 'ef.entity_id = u.uid');
+        $result = $result
+            ->fields('u', array('uid', 'name'))
+            ->condition('u.name', '%' . db_like($string) . '%', 'LIKE')
+            ->condition('uc.creator_uid',$currentUserId, '=')
+            ->isNull('ef.entity_id')
+            ->execute();
+
+        // save the query to matches
+        foreach ($result as $row) {
+            $name = $row->name . ' (' . $row->uid . ')';
+            $matches[$name] = check_plain($row->name);
+        }
+
+        // Return the result to the form in json
+        drupal_json_output($matches);
+    }
+}

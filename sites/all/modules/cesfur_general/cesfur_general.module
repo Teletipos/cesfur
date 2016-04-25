@@ -1,0 +1,185 @@
+<?php
+
+function cesfur_general_menu() {
+    $items = array();
+    $items['node/%node/view_revision_list'] = array(
+        'title callback' => 'load_revisiones_title',
+        'title arguments' => array(1),
+        'access callback' => TRUE,
+        'page callback' => 'load_revisiones',
+        'page arguments' => array(1),
+        'type' => MENU_LOCAL_TASK,
+    );
+
+    return $items;
+}
+
+function load_revisiones_title($node) {
+    $revisions = node_revision_list($node);
+    if(count($revisions) <= 1){
+        return t('Sin revisiones');
+    } else {
+        return (t('Revisiones') . ' (' . (count($revisions) - 1) . ')'); //Take away the current version
+    }
+}
+
+function load_revisiones($node) {
+    if($node != NULL &&
+        $node->nid != NULL) {
+
+        $revisions = node_revision_list($node);
+        if(count($revisions) == 1) {
+            drupal_goto('node/' . $node->nid);
+        } else {
+            drupal_goto('node/' . $node->nid . '/revisiones');
+        }
+
+    } else {
+        drupal_goto('node/' . $node->nid);
+    }
+}
+
+function cesfur_general_node_delete($node) {
+    $nodeType = isset($node->type) ? $node->type : '';
+    switch($nodeType) {
+        case 'empresa_financiera': {
+            db_delete('field_data_field_id_empresa_financiera')
+                ->condition('field_id_empresa_financiera_value', $node->nid)
+                ->execute();
+
+            break;
+        }
+    }
+}
+
+function cesfur_general_views_query_alter(&$view, &$query) {
+    if($view->name == 'revisioning_content_revisions_summary'){
+        $node_nid_replace = $view->query->where[0]['conditions'][0]['value'][':node_revision_nid'];
+        $where = db_and()->condition('node_revision.vid', $node_nid_replace, '!=');
+        $view->query->add_where(0, $where);
+        //Order by
+        $view->query->orderby[0]['field'] = 'vid';
+        $view->query->orderby[0]['direction'] = 'ASC';
+    }
+}
+
+/**
+* On users creation, link the created user with the current "empresa financiera" field
+*/
+
+function cesfur_general_node_insert($node) {
+    $nodeType = isset($node->type) ? $node->type : NULL;
+    switch($nodeType) {
+        case 'empresa_financiera': {
+            $userTarget = $node->field_usuario_empresa_financiera['und'][0]['target_id'];
+
+            if($userTarget != null &&
+                $userTarget > 0) {
+
+                $user = user_load($userTarget);
+                $user_wrapper = entity_metadata_wrapper('user', $user);
+                $user_wrapper->field_id_empresa_financiera[] = $node->nid;
+                $user_wrapper->save();
+
+                //Make modifications on the current user (CESFUR user) to add this company to the list as well.
+                global $user;
+                $u = $user;
+                $user_wrapper_cesfur = entity_metadata_wrapper('user', $u);
+                $arr = $user_wrapper_cesfur->field_id_empresa_financiera->value();
+                if(!$arr)
+                    $arr = array();
+                $arr[count($arr)] = $node->nid;
+                $user_wrapper_cesfur->field_id_empresa_financiera->set($arr);
+                $user_wrapper_cesfur->save();
+            }
+
+            break;
+        }
+    }
+}
+
+function cesfur_general_user_presave(&$edit, $account, $category) {
+    if(user_access('administer'))
+        return;
+
+    global $user;
+    $empresa = getEmpresaByUser($user->uid);
+
+    if($empresa != NULL &&
+        isCurrentUserAdministradorEmpresa()) {
+        $edit['field_id_empresa_financiera']['und'][0]['value'] = $empresa->nid;
+    }
+}
+
+/** Remove the user creator (for Anticlientes) if the current user is NOT CESFUR **/
+function cesfur_general_views_pre_build(&$view) {
+    if(!user_access(PERMISSION_VIEW_ANTICLIENTES_AUTHOR)) {
+        if($view->name == 'anticlientes_excel') {
+            if(isset($view->field) &&
+                isset($view->field['name'])) {
+                unset($view->field['name']);
+            }
+        }
+    }
+}
+
+/** Remove the user creator (for Anticlientes) if the current user is NOT CESFUR **/
+function cesfur_general_preprocess_node(&$vars) {
+    if($vars['type'] == 'anti_cliente') {
+        if(!user_access(PERMISSION_VIEW_ANTICLIENTES_AUTHOR)) {
+            if(isset($vars['submitted']))
+                $vars['submitted'] = '';
+        }
+    }
+}
+
+function cesfur_general_form_alter(&$form, &$form_state, $form_id){
+    switch($form_id) {
+        case 'anti_cliente_node_form': {
+            $isEditing = isset($form['#node']->nid);
+            if($isEditing) {
+                //Has any revision? If so, needs to delete the revision side.
+                $node = node_load($form["#node"]->nid);
+                $form['aaa'] = array(
+                    '#type' => 'item',
+                    '#title' => t('Se generará una nueva revisión del documento al presionar "Guardar"'),
+                    '#class' => 'description',
+                    '#weight' => -15,
+                );
+            } else { //Is creating?
+                unset($form["revision_information"]);
+            }
+
+            break;
+        }
+        default: {
+
+        }
+    }
+}
+
+function getEmpresaByUser($uid) {
+    $user = user_load($uid);
+    if(isset($user->field_id_empresa_financiera) &&
+        isset($user->field_id_empresa_financiera['und']))
+        return node_load($user->field_id_empresa_financiera['und'][0]['value']);
+
+    return NULL;
+}
+
+/** Definition for roles **/
+function isCurrentUserCesfur() {
+    return user_has_role(4);
+}
+
+function isCurrentUserAdministradorEmpresa() {
+    return user_has_role(5);
+}
+
+function isCurrentUserEditor() {
+    return user_has_role(6);
+}
+
+function isCurrentUserTesting() {
+    return user_has_role(7);
+}

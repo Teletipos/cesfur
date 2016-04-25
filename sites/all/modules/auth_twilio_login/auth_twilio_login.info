@@ -1,0 +1,4 @@
+core = "7.x"
+description = "Implements the login along with Twilio in order to enter the system once the confirmation code has been generated and validated."
+name = "CESFUR Authentication with Twilio"
+package = Darwoft

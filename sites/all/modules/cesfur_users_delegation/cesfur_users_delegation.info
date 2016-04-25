@@ -1,0 +1,6 @@
+core = "7.x"
+description = "Allows user of specific role to create new users of specific role as the CESFUR requirements establishes."
+name = "CESFUR Users delegation"
+package = Darwoft
+
+scripts[] = js/cesfur_users_delegation.js

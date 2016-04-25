@@ -1,0 +1,90 @@
+<?php
+
+define('CESFUR_PERMISSIONS_MODULE_NAME', 'CESFUR PERMISSIONS');
+define('CESFUR_PERMISSIONS_REALM_NAME', 'CESFUR_REALMNAME_PERMISSIONS');
+
+define('PERMISSION_VIEW_EMPRESAS_FINANCIERAS', 'ver empresas financieras');
+define('PERMISSION_VIEW_ANTICLIENTES_AUTHOR', 'ver autor de anticlientes');
+define('PERMISSION_EDIT_SAME_COMPANY_CONTENT', 'modificar contenido misma empresa');
+
+function cesfur_perm_permission() {
+    return array(
+        PERMISSION_VIEW_EMPRESAS_FINANCIERAS => array(
+            'title' => t('Ver empresas financieras.'), 
+            'description' => '',
+        ),
+        PERMISSION_VIEW_ANTICLIENTES_AUTHOR => array(
+            'title' => t('Ver autor de anticlientes.'),
+            'description' => ''
+        ),
+        /** Permite modificar contenido de la misma empresa (por ejemplo un Editor puede modificar un anticliente solo si el usuario que la creo es de la misma empresa que el editor) **/
+        PERMISSION_EDIT_SAME_COMPANY_CONTENT => array(
+            'title' => t('Modificar contenido de la misma empresa.'),
+            'description' => ''
+        )
+    );
+}
+
+/**
+ * Implements hook_node_access_records().
+ */
+function cesfur_perm_node_access_records($node) {
+    $grants = array();
+
+    //I'll give everyone access to view
+    $grants[] = array(
+        'realm' => CESFUR_PERMISSIONS_REALM_NAME,
+        'gid' => 1,
+        'grant_view' => 1,
+        'grant_update' => 0,
+        'grant_delete' => 0,
+        'priority' => 0,
+    );
+
+    //ALL PRIVILEGES (only for CESFUR users)
+    $grants[] = array(
+        'realm' => CESFUR_PERMISSIONS_REALM_NAME,
+        'gid' => 2,
+        'grant_view' => 1,
+        'grant_update' => 1,
+        'grant_delete' => 1,
+        'priority' => 0,
+    );
+
+    $empresa = getEmpresaByUser($node->uid);
+    if($empresa != NULL) {
+        if (($node->type == 'anti_cliente' || $node->type == 'nube_documento') && $node->status) {
+            //I'll give only access to view/edit to the employees of the same company.
+            $grants[] = array(
+                'realm' => CESFUR_PERMISSIONS_REALM_NAME,
+                'gid' => $empresa->nid,
+                'grant_view' => 1,
+                'grant_update' => 1,
+                'grant_delete' => 0,
+                'priority' => 0,
+            );
+        }
+    }
+
+    return $grants;
+}
+
+/**
+ * Implements hook_node_grants().
+ */
+function cesfur_perm_node_grants($account, $op) {
+    $grants = array();
+
+    $empresa = getEmpresaByUser($account->uid);
+
+    //Give both access or only to view depending on the evaluated user
+    if(user_has_role(4, $account)) {
+        $grants[CESFUR_PERMISSIONS_REALM_NAME][] = array(2);
+    } else if($empresa != NULL) {
+        $grants[CESFUR_PERMISSIONS_REALM_NAME][] = array($empresa->nid, 1);
+    } else {
+        $grants[CESFUR_PERMISSIONS_REALM_NAME][] = array(1); //View all content.
+    }
+  
+    return $grants;
+}
