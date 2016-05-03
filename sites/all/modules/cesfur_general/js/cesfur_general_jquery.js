@@ -6,7 +6,7 @@ jQuery(document).ready(function(){
     var patternToRemove = 'revisions';
     if(jQuery(isNubeDocumento).length > 0) {
         //Remove all the revision buttons.
-        patternToRemove = 'revision';
+        //patternToRemove = 'revision';
     }
 
     jQuery(revisionesBtn).each(function(idx, element){

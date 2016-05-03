@@ -135,6 +135,7 @@ function cesfur_general_preprocess_node(&$vars) {
 
 function cesfur_general_form_alter(&$form, &$form_state, $form_id){
     switch($form_id) {
+        case 'nube_documento_node_form':
         case 'anti_cliente_node_form': {
             $isEditing = isset($form['#node']->nid);
             if($isEditing) {
