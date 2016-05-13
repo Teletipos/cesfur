@@ -9,14 +9,16 @@ define('STRING_PERMISSION', 'twilio_validation');
 function auth_twilio_login_user_login(&$edit, $account) {
     if(!user_access('administer', $account) && 
         user_access(STRING_PERMISSION, $account)) {
-        
-        $sentMessage = sendMessageToTwilio($account->uid);
+
+        $sentMessage = sendMessageToTwilio($account->uid, TRUE);
         $destination = '';
 
         $phoneNumber = getPhoneNumberFromUser($account->uid);
         if($sentMessage) {
             watchdog(MODULE_NAME, 'Mensaje enviado a +' . $phoneNumber[0] . $phoneNumber[1], array(), WATCHDOG_DEBUG);
             $destination = 'user/login/verification';
+            drupal_set_message('Su codigo de confirmacion fue enviado a su e-mail y a su teléfono');
+
         } else {
             watchdog(MODULE_NAME, 'El mensaje a +' . $phoneNumber[0] . $phoneNumber[1] . ' no se pudo enviar', array(), WATCHDOG_ERROR);
             form_set_error('error_sending_message', 'El mensaje no pudo enviarse a su teléfono celular. Inténtelo nuevamente');
@@ -38,7 +40,7 @@ function auth_twilio_login_menu() {
         'title' => t('Codigo de verificacion'),
         'page callback' => 'drupal_get_form',
         'page arguments' => array('auth_twilio_form'),
-        'access arguments' => array('access content'),
+        'access callback' => TRUE,
         'description' => t('Verification code'),
         'type' => MENU_CALLBACK,
     );
@@ -59,7 +61,7 @@ function auth_twilio_form($form_state) {
     $user = user_load($sessionId);
     $form['verification_code'] = array(
         '#type' => 'textfield',
-        '#title' => t('Ingrese el codigo de verificacion para ingresar con ' . $user->name),
+        '#title' => t('Ingrese el codigo de verificacion que recibio en su telefono celular o en su email para ingresar con ' . $user->name),
     );
   
     // Adds a simple submit button that refreshes the form and clears its contents -- this is the default behavior for forms.
@@ -153,7 +155,7 @@ function auth_twilio_login_permission() {
     );
 }
 
-function sendMessageToTwilio($uid) {
+function sendMessageToTwilio($uid, $sendEmail = FALSE) {
     //Save random number and send it by sms.
     $randomNumber = mt_rand(100000, 999999);
     $account = user_load($uid);
@@ -172,7 +174,29 @@ function sendMessageToTwilio($uid) {
     $message = "Su codigo de confirmacion es: $randomNumber. Atte";
 
     $sentMessage = twilio_send($phoneNumber[1], $message, ("+" . $phoneNumber[0]));
+
+    if($sendEmail) {
+        $params = array(
+            'message' => $message,
+            'account' => $account
+        );
+        drupal_mail('auth_twilio_login', 'send_access_code', $account->mail, user_preferred_language($account), $params);
+    }
+
     return $sentMessage;
+}
+
+function auth_twilio_login_mail($key, &$message, $params) {
+    if($key == 'send_access_code') {
+        $text = $params['message'];
+        $account = $params['account'];
+
+        $message['subject'] = t('CESFUR - Codigo de verificacion');
+        $message['body'][] = $text;
+        $message['body'][] = '<hr />';
+        $message['body'][] = variable_get('site_name', "CESFUR");
+        $message['send'] = TRUE;
+    }
 }
 
 /**
