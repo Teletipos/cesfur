@@ -5,10 +5,10 @@ function cesfur_general_menu() {
     $items['node/%node/view_revision_list'] = array(
         'title callback' => 'load_revisiones_title',
         'title arguments' => array(1),
-        'access callback' => TRUE,
         'page callback' => 'load_revisiones',
         'page arguments' => array(1),
-        'type' => MENU_LOCAL_TASK,
+        'access_callback' => 'view revisions',
+        'type' => MENU_LOCAL_TASK
     );
 
     return $items;
